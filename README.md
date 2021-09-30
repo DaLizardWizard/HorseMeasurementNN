@@ -1,4 +1,4 @@
-# HorseMeasurementNN
+# WIP - HorseMeasurementNN
 This is the pipeline for classifying horse images into body condition score, segmenting the image and measuring body geometry. it is built using two neural nets and one computer vision pipeline(s)
 
 NN1 - Extraction of horse via image segmentation
