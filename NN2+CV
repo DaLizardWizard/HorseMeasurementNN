@@ -1,0 +1,477 @@
+#!mkdir HorseData/TapeTest
+#!ls HorseData/TapedTest
+#!apt-get install unrar
+#!unrar e HorseData/TapedTest/TestPhotos.rar HorseData/TapedTest/
+from skimage.io import imread_collection
+import skimage
+from skimage import measure
+from skimage.measure import label, regionprops, regionprops_table
+import matplotlib.pyplot as plt
+from PIL import Image
+from skimage.filters import rank
+from skimage.morphology import disk
+import glob
+import numpy as np
+testims = "HorseData/TapedTest2/*.JPG"
+col = imread_collection(testims)
+
+
+
+
+
+
+
+for im in col:
+    plt.figure(figsize=(16, 8))
+    plt.figsize=(16, 8)
+    plt.subplot(1,2,1)
+    
+    plt.imshow(im)
+    
+    plt.subplot(1,2,2)
+    
+    image = im
+    colors = ("red", "green", "blue")
+    channel_ids = (0, 1, 2)
+
+    # create the histogram plot, with three lines, one for
+    # each color
+    plt.xlim([0, 256])
+    for channel_id, c in zip(channel_ids, colors):
+        plt.xlim(5,256)
+        histogram, bin_edges = np.histogram(
+            image[:, :, channel_id], bins=256, range=(0, 256)
+        )
+        plt.plot(bin_edges[0:-1], histogram, color=c)
+
+    plt.xlabel("Color value")
+    plt.ylabel("Pixels")
+
+    plt.show()
+
+# tuple to select colors of each channel line
+image = col[1]
+colors = ("red", "green", "blue")
+channel_ids = (0, 1, 2)
+
+# create the histogram plot, with three lines, one for
+# each color
+plt.xlim([0, 256])
+for channel_id, c in zip(channel_ids, colors):
+    histogram, bin_edges = np.histogram(
+        image[:, :, channel_id], bins=256, range=(0, 256)
+    )
+    plt.plot(bin_edges[0:-1], histogram, color=c)
+
+plt.xlabel("Color value")
+plt.ylabel("Pixels")
+
+plt.show()
+
+# image[:,:,0] = 0
+# image[:,:,1] = 0
+plt.figure(figsize=(20, 8))
+plt.title("Blue channel")
+plt.imshow(image[:,:,1],cmap="gray")
+plt.show()
+
+
+BlueIm = image[:,:,2]
+
+
+BlueChannel = BlueIm.copy()
+T1 = 75
+T2 = 200
+maskHigher =  BlueChannel >= T2
+BlueChannel[maskHigher] = 0
+maskLower =  BlueChannel < T1
+BlueChannel[maskLower] = 0
+
+plt.figure(figsize=(20, 8))
+plt.title("Blue channel")
+plt.imshow(BlueChannel,cmap="gray")
+plt.show()
+
+
+
+image_list = []
+image_IDs = []
+for filename in glob.glob(testims): #assuming gif
+    im=Image.open(filename)
+    #plt.imshow(im)
+    #plt.show()
+    image_IDs.append(filename)
+    image_list.append(im)
+print(len(image_list))    
+plt.imshow(image_list[3])
+
+#mapping label to colour 
+# Define the helper function
+def decode_segmap(image, nc=21):
+  label_colors = np.array([(0, 0, 0),  # 0=background
+               # 1=aeroplane, 2=bicycle, 3=bird, 4=boat, 5=bottle
+               (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128),
+               # 6=bus, 7=car, 8=cat, 9=chair, 10=cow
+               (0, 128, 128), (128, 128, 128), (64, 0, 0), (192, 0, 0), (64, 128, 0),
+               # 11=dining table, 12=dog, 13=horse, 14=motorbike, 15=person
+               (192, 128, 0), (64, 0, 128), (192, 0, 128), (64, 128, 128), (0, 0, 0),
+               # 16=potted plant, 17=sheep, 18=sofa, 19=train, 20=tv/monitor
+               (0, 64, 0), (128, 64, 0), (0, 192, 0), (128, 192, 0), (0, 64, 128)])
+  r = np.zeros_like(image).astype(np.uint8)
+  g = np.zeros_like(image).astype(np.uint8)
+  b = np.zeros_like(image).astype(np.uint8)
+  for l in range(0, nc):
+    idx = image == l
+    r[idx] = label_colors[l, 0]
+    g[idx] = label_colors[l, 1]
+    b[idx] = label_colors[l, 2]
+  rgb = np.stack([r, g, b], axis=2)
+  return rgb
+
+from torchvision import models 
+fcn = models.segmentation.fcn_resnet101(pretrained=True).eval()
+dlab = models.segmentation.deeplabv3_resnet101(pretrained=1).eval()
+
+import torchvision.transforms as T
+trf = T.Compose([T.Resize(256), T.CenterCrop(224), T.ToTensor(), T.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])]) 
+inp = trf(image_list[3]).unsqueeze(0)
+print(inp.shape)
+#plt.imshow(inp)
+#inp[0,2,4]
+inp = inp.squeeze(0)
+print(inp.shape)
+img=inp.numpy()
+img=np.swapaxes(img,0,1)
+img=np.swapaxes(img,1,2)
+plt.imshow(img)
+
+
+# Pass the input through the net 
+# 21 classes each with a width/height of 224
+out = fcn(inp)["out"] 
+print (out.shape)
+
+
+import torch
+import torchvision
+om = torch.argmax(out.squeeze(), dim=0).detach().cpu().numpy()
+print (om.shape)
+print (np.unique(om))
+#13 and 15 correspond to horse and person
+#we jsut want class 13
+plt.imshow(om)
+
+rgb = decode_segmap(om) 
+plt.imshow(rgb); plt.show()
+#plt.imshow(out[0,12]); plt.show()
+#out[0,12]
+
+
+
+#placing all as one function
+from skimage import color
+from skimage import io
+from skimage.io import imsave
+import pandas as pd
+
+global mask
+mask = []
+
+
+HorseHeightOutput = pd.DataFrame(columns = ['L height','R height'])
+print(HorseHeightOutput)
+
+
+def segment(net, path, TR, TC):
+    global HorseHeightOutput
+    img = path
+    #plt.imshow(img); plt.axis('off'); plt.show()
+    TCH = int(1.2*TC)
+    TRH = int(1.2*TR)
+    # Comment the Resize and CenterCrop for better inference results
+    #running without resizing and cropping exponentially increases segmentation time
+    #default values for TR and TC are 256 and 224
+    trf = T.Compose([T.Resize([TR,TRH]), 
+                   T.CenterCrop([TC,TCH]), 
+                   T.ToTensor(), 
+                   T.Normalize(mean = [0.485, 0.456, 0.406], 
+                               std = [0.229, 0.224, 0.225])])
+    inp = trf(img).unsqueeze(0)
+    
+    #gives us a resized image in a tensor format which we can then apply masks to
+    imr = T.Compose([T.Resize([TR,TRH]), 
+               T.CenterCrop([TC,TCH]), 
+               T.ToTensor()])
+    imrz = imr(img).unsqueeze(0)
+    
+    #passing DNN ready tensor through the net
+    out = net(inp)['out']
+    om = torch.argmax(out.squeeze(), dim=0).detach().cpu().numpy()
+    rgb = decode_segmap(om)
+    #plt.imshow(rgb) #plt.axis('off'); 
+    #plt.show()
+    
+    #saving image masks
+    imrz = imrz.squeeze(0)
+    img=imrz.numpy()
+    img=np.swapaxes(img,0,1)
+    img=np.swapaxes(img,1,2)
+    #plt.imshow(img)
+    #plt.show()
+    
+    #print(rgb.shape)
+    #print(img.shape)
+    #so, positive horse map = rgb, "human friendly horse resized cropped image = img"
+    
+    #convert to a binary-ish mask
+    mask = rgb[:,:,0]
+    
+    
+    #https://stackoverflow.com/questions/34691128/how-to-use-mask-to-remove-the-background-in-python/38516107
+    #where the mask is less than ten set colours to 0
+    mask2 = np.where((mask<10),0,1).astype('uint8')
+    cim = img*mask2[:,:,np.newaxis]
+    #plt.imshow(cim)
+    #plt.show()
+    
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3,figsize=(16,12))
+    ax1.axis('off'); ax2.axis('off'); ax3.axis('off');
+    ax1.set_title('Resized image')
+    ax2.set_title('Horse detection')
+    ax3.set_title('Background removal')
+    ax1.imshow(img);ax2.imshow(rgb); ax3.imshow(cim);
+    plt.show()
+    
+    
+    origbluemap = cim[:,:,2]
+    
+    #Also a copy of the blue image channel. 2 = blue so
+    BOnly = cim[:,:,:].copy()
+    print(BOnly[200,200,2])
+    threshbluemap = cim[:,:,:].copy()
+    
+    contours = measure.find_contours(mask)
+    
+    ###########################################################################################################
+    ###########################################################################################################
+    ###########################################################################################################
+    
+    #https://stackoverflow.com/questions/34691128/how-to-use-mask-to-remove-the-background-in-python/38516107
+    #where the mask is less than ten set colours to 0
+    ############
+    #I dont know why this doesnt work =[
+    ############
+    RGBval = 0.5
+#     conditions = (
+#         ((BOnly[:,:,0] > RGBval) & (BOnly[:,:,1] > RGBval) & (BOnly[:,:,2] > RGBval)), #Removes white light above RGBVal
+#         ((BOnly[:,:,0] > RGBval) & (BOnly[:,:,1] > RGBval)), #removes RG light
+#         ((BOnly[:,:,0] > RGBval) & (BOnly[:,:,2] > RGBval)), #removes RB light
+#         ((BOnly[:,:,1] > RGBval) & (BOnly[:,:,2] > RGBval)), #removes GB light
+#         (BOnly[:,:,0] > RGBval), #removes R light
+#         (BOnly[:,:,1] > RGBval), #removes G light
+#     )
+#     maskLower = np.any(conditions)
+#     print(maskLower)
+#     BOnly[maskLower] = 0
+    
+#     BOnly = BOnly[np.where((BOnly == maskLower,0,1))] = [0,0,0]
+               
+    print(BOnly[200,200,2])
+    
+    
+    ###this kind of works
+#     maskHigher =  ((BOnly[:,:,0] > 0.3) & (BOnly[:,:,1] > 0.3) & (BOnly[:,:,2] > 0.3)) #Removes white light above RGBVal
+#     BOnly[maskHigher] = 0.3
+#     maskHigher =      ((BOnly[:,:,0] > RGBval) & (BOnly[:,:,1] > RGBval)) #removes RG light
+#     BOnly[maskHigher] = 0.3
+#     maskHigher =      ((BOnly[:,:,0] > RGBval) & (BOnly[:,:,2] > RGBval)) #removes RB light
+#     BOnly[maskHigher] = 0.3
+#     maskHigher =      ((BOnly[:,:,1] > RGBval) & (BOnly[:,:,2] > RGBval)) #removes GB light
+#     BOnly[maskHigher] = 0.3
+#     maskHigher =      (BOnly[:,:,0] > RGBval) #removes R light
+#     BOnly[maskHigher] = 0.3
+#     maskHigher =      (BOnly[:,:,1] > RGBval) #removes G light
+#     BOnly[maskHigher] = 0.3
+    
+#     maskHigher =  ((BOnly[:,:,2] > 0.4))
+#     BOnly[maskHigher] = 1
+#     maskHigher =  ((BOnly[:,:,:] < 0.5))
+#     BOnly[maskHigher] = 0
+#     BOnly = BOnly[:,:,2]
+
+    #maybe things might vary but alternatiuve BLUE
+#     maskHigher =  (  ((BOnly[:,:,2])/(BOnly[:,:,0]) + (BOnly[:,:,1])) >=2.5 )
+# #     print("printing pixel values")
+# #     print("printing first pixel values")
+# #     print(BOnly[maskHigher][0])
+# #     print(BOnly[maskHigher][0][0])
+    
+#     #sorting attempt third time
+    
+#     #BOnly[maskHigher].sort(key=lambda x:x[2])
+#     #doot = sorted((BOnly[maskHigher]), key=lambda x:x[2],reverse= True)
+#     #print("printing doot")
+#     #doot = np.array(doot)
+#     #print(doot)
+#     #print((BOnly[:,:,:] < 0.99))
+#     #print((doot == doot))
+#     print(sorted(BOnly[:,:,2], key=lambda x:x[0],reverse= True))
+    
+#     maskHigher =  ((BOnly[:,:,:] == 0.9))
+#     print(BOnly[:,:,2].max())
+    maskHigher =  ( ((BOnly[:,:,2]) + 0.1 >= (BOnly[:,:,0] + BOnly[:,:,1])) & (BOnly[:,:,2] > 0.5) )               
+    BOnly[maskHigher] = 1
+    maskHigher =  ((BOnly[:,:,:] < 0.99))
+    BOnly[maskHigher] = 0
+    BOnly = BOnly[:,:,2]    
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3,figsize=(16,12))
+    #ax1.axis('off'); ax2.axis('off'); ax3.axis('off');
+    ax1.set_title('Original image'); ax2.set_title('RGB masks applied'); ax3.set_title('Edge removing')
+    ax1.imshow(cim, cmap=plt.cm.gray)
+    ax2.imshow(BOnly, cmap=plt.cm.gray)
+    
+    #pseudo produces an image that has all the edges removed! now just need to save it as an image as greyscale
+    ax3.imshow(threshbluemap, cmap=plt.cm.gray)
+    for contour in contours:
+        ax3.plot(contour[:, 1], contour[:, 0], linewidth=20, color = "b")
+    plt.show()    
+    
+    
+    #produce composite image from contour map and thresholded data.
+    plt.figure(figsize=(7.9,15.8), dpi=100)
+    plt.imshow(BOnly, cmap=plt.cm.gray)
+    plt.axis('off')
+    for contour in contours:
+        plt.plot(contour[:, 1], contour[:, 0], linewidth=20, color = "k")
+    
+    plt.savefig('foo.png', format = "png", bbox_inches="tight",pad_inches=0) 
+    plt.close()
+    
+
+    edgemasked = io.imread('foo.png')
+    
+    #plt.figure(figsize = (8,6))
+    #plt.imshow(edgemasked, cmap=plt.cm.gray)
+    #getting central coords from blobs
+
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1,3,figsize=(16,12))
+    #ax1.axis('off'); ax2.axis('off')
+    ax1.set_title('All masks applied'); ax2.set_title('Marker detection'); ax3.set_title('Marker overlay')
+    ax1.imshow(edgemasked, cmap=plt.cm.gray)
+    ax2.imshow(edgemasked, cmap=plt.cm.gray)
+    
+    #label_img = label(edgemasked) # with this command the flase centroid is detected, this the fallse centroid is detected
+    edgemasked = edgemasked[:,:,2]
+    
+    tapepos = []
+    
+    #slightly blue image
+    selem = disk(2)
+    #edgemasked = rank.mean(edgemasked, selem=selem) looks okay but right tape is too high
+    edgemaskedtemp = rank.mean(edgemasked, selem=selem)
+    label_img = label(edgemaskedtemp)
+    regions = regionprops(label_img)
+    for props in regions:
+        if (props.area >= 1):
+            #print(props.centroid)
+            #print(props.area)
+            tapepos += props.centroid
+            y0, x0 = props.centroid
+            ax2.plot(x0, y0, '.r', markersize=15)
+    #plotting only this produced multiple "wrong" centroid markers, why could this be?
+    #think it gets every layer within the image, and for some reason we have saved as another
+    
+    ax3.imshow(origbluemap, cmap=plt.cm.gray)   #indicates that we have a blank canvas, might be detected?
+    for props in regions:
+        if (props.area >=1):
+            #print(props.centroid)
+            y0, x0 = props.centroid
+            ax3.plot(x0, y0, '.r', markersize=5)
+    plt.show()
+    
+    tapepos = tapepos[0],tapepos[1],tapepos[-2],tapepos[-1]
+    print(tapepos)
+    LT=[]
+    RT=[]
+    #setting in redundancy incase the coordinates are swapped somehow.
+    if tapepos[1] > tapepos[3]:
+        LT =[tapepos[2],tapepos[3]]
+        RT =[tapepos[0],tapepos[1]]
+    else:
+        LT =[tapepos[0],tapepos[1]]
+        RT =[tapepos[2],tapepos[3]]        
+        
+    #in horse map, between x values (second tuple) that lie between 0 and 200 = L leg box
+    #in horse map, between x values (second tuple) that lie between 0 and 200 = R leg box
+    #512 elements in 2d array, each a list of 614 long
+    #print(max((y for x, y in origbluemap if x in range(0, 200)), default=None))
+    #correct slice
+    
+    #take a 1d slice of original bluemap at the X-xoord of sticker 
+    Lslice,Rslice = origbluemap[:,(int(LT[1]-5)):(int(LT[1]+5))], origbluemap[:,(int(RT[1]-5)):(int(RT[1]+5))]
+    print(LT[1],RT[1])
+    
+    fig, (ax1, ax2) = plt.subplots(1,2,figsize=(16,4))
+    ax1.set_title('Left marker verticle slice'); ax2.set_title('Right marker verticle slice')
+    ax1.plot(Lslice)
+    ax2.plot(Rslice)
+    plt.show()
+    
+    #average all positions of 2d array
+    Lslice = Lslice.mean(axis=1)
+    Rslice = Rslice.mean(axis=1)
+    
+    #gets highest non zero value (where horse feet are), and min, where top is of that slice.
+    Lmax,Lmin = (np.max(np.nonzero(Lslice)),np.min(np.nonzero(Lslice)))
+    Rmax,Rmin = (np.max(np.nonzero(Rslice)),np.min(np.nonzero(Rslice)))
+
+    
+    print(np.max(np.nonzero(Lslice)),np.min(np.nonzero(Lslice)))
+    #not detecting the first nonzero slice as being ~100
+    #print(Lslice[0,0])
+    
+    #need to change depending on heigh marker
+    Lheight = ((Lmax-Lmin)/(Lmax-LT[0])*100)
+    Lheight = "%.2f" % Lheight
+
+    Rheight = ((Rmax-Rmin)/(Rmax-RT[0])*100)
+    Rheight = "%.2f" % Rheight
+    print(Lheight,Rheight)
+    
+    DataRow =[Lheight,Rheight]
+    print(DataRow)
+    a_series = pd. Series(DataRow, index = HorseHeightOutput.columns)
+    print(a_series)
+    HorseHeightOutput = HorseHeightOutput.append(a_series, ignore_index=True)
+    print(HorseHeightOutput)
+    
+    
+
+segment(dlab,image_list[3],512,512)
+                                
+
+
+    print(BOnly[maskHigher][0])
+
+#segment using good dlab
+#segment(dlab,image_list[15])
+
+#segment(dlab,image_list[15],1028,1028)
+
+#segment(dlab,image_list[15],2056,2056)
+
+#segment(dlab,image_list[15],512,512)
+
+HorseHeightOutput = pd.DataFrame(columns = ['L height','R height'])
+for filename in glob.glob("HorseData/Horse_Images/HorseData/Horse_Images/HorseSide/*tape*"):
+    print(filename)
+    im=Image.open(filename)
+    segment(dlab,im,512,512)
+print(HorseHeightOutput)
+
+# for filename in glob.glob("PieSkewHorse/Skewbald Horse/*.jpg"):
+#     im=Image.open(filename)
+#     segment(dlab,im,512,512)
